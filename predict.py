@@ -19,7 +19,6 @@ from models.controlnet import ControlNetModel3D
 from models.RIFE.IFNet_HDv3 import IFNet
 from cog import BasePredictor, Input, Path
 
-
 sd_path = "checkpoints/stable-diffusion-v1-5"
 inter_path = "checkpoints/flownet.pkl"
 controlnet_dict = {
@@ -34,7 +33,7 @@ controlnet_parser_dict = {
     "canny": CannyDetector,
 }
 
-POS_PROMPT = " ,best quality, extremely detailed, HD, ultra-realistic, 8K, HQ, masterpiece, trending on artstation, art, smooth"
+POS_PROMPT = "best quality, extremely detailed, HD, ultra-realistic, 8K, high quality, masterpiece, trending on artstation, art"
 NEG_PROMPT = "longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer difits, cropped, worst quality, low quality, deformed body, bloated, ugly, unrealistic"
 
 
