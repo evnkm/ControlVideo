@@ -3,9 +3,10 @@ from time import sleep
 from itertools import product
 
 import jaynes
-import glob
+import json
 from params_proto import ParamsProto
-from inference import Lucid, generate
+from inference import Lucid, generate, main
+import prompt_samples
 
 
 machines = [
@@ -48,7 +49,12 @@ class RunArgs(ParamsProto):
 # ]
 
 
-def entrypoint(i, prompt, video_path, output_path, sample_vid_name, ):
+def entrypoint(i,
+               prompt,
+               video_path,
+               env_name,
+               sample_root,
+               sample_vid_name):
     print(f"Hey guys! We're on host {i} running environment {env}")
     from ml_logger import logger
     from ml_logger.job import RUN
@@ -58,25 +64,35 @@ def entrypoint(i, prompt, video_path, output_path, sample_vid_name, ):
 
     print(f" RUN prefix {prefix} ")
     logger.configure(prefix=prefix)
-    filtered_trajs = logger.glob("edges_ego_*")
 
     # TODO: MAKE START INDEX CONSISTENT WITH ALAN
-    for traj_num, video in enumerate(filtered_trajs, start=1):
-        generate(prompt, video_path, f"sample_{traj_num:02}", sample_vid_name)
+    generate(prompt, video_path, env_name, sample_root, sample_vid_name)
 
 
 if __name__ == "__main__":
+    from ml_logger import logger
+    LOGGER_PREFIX = "alanyu/scratch/lucid_sim/stairs_v1"
+    logger.configure(prefix=LOGGER_PREFIX)
+    # TODO: generalize for other environments
+    # environments = logger.glob("*")
+    filtered_videos = logger.glob("edges_ego_*")
 
-    if RunArgs.sweep:
-        runs = list(product(RunArgs.environments, RunArgs.algos, RunArgs.seeds))
-    else:
-        runs = list(zip(RunArgs.environments, RunArgs.algos, RunArgs.seeds))
+    # TODO: Update to read directly from app.dash.ml
+    file_path = "data.json"
+    with open(file_path, "r") as file:
+        data_list = json.load(file)
+
+    prompt_prefix = f"walking over {terrain_type} stairs, first-person view, sharp stair edges, "
+    prompts = [prompt_prefix + prompt_samples.prompt_gen() for _ in range(len(filtered_videos))]
 
     input(
         f"Running the following {len(runs)} configurations: {runs} \n Press enter to continue..."
     )
 
-    prefix = "/lucid_sim/datasets/lucid_sim"  # "/alanyu/pql/investigation_raw/"
+
+        for
+
+    prefix = LOGGER_PREFIX  # "/alanyu/pql/investigation_raw/"
 
     for i, (env, algo, seed) in enumerate(runs):
         if i < len(machines):
