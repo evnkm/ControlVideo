@@ -52,7 +52,6 @@ class Lucid(PrefixProto):
 
     prompt: str = ""
     video_path: str = ""
-    sample_vid_name: str = ""
     condition: str = "lineart_coarse"
     video_length: int = 10
     smoother_steps: list = [19, 20]
@@ -64,7 +63,8 @@ class Lucid(PrefixProto):
     guidance_scale: float = 12.5
 
 
-def logger_save_vids(videos: torch.Tensor, traj_num: int, sample_num: int, rescale=False, n_rows=4, ret_images=False, vid_type=""):
+def logger_save_vids(videos: torch.Tensor, traj_num: int, sample_num: int, rescale=False, n_rows=4, ret_images=False,
+                     vid_type=""):
     '''
     Saves a grid of videos to a file AND returns list of numpy arrays.
     '''
@@ -137,7 +137,6 @@ def generate(prompt, video_path, traj_num, sample_num):
     # save_videos_grid(original_pixels, os.path.join(Lucid.env_type, f"sample{sample_num}.mp4"), fps=50, rescale=True)
     logger_save_vids(original_pixels, traj_num, sample_num, rescale=True, vid_type="source")
 
-
     # Step 2. Parse a video to conditional frames
     t2i_transform = torchvision.transforms.ToPILImage()
     pil_annotation = []
@@ -177,31 +176,40 @@ def generate(prompt, video_path, traj_num, sample_num):
     frames = logger_save_vids(sample, traj_num, sample_num, ret_images=True, vid_type="result")
 
     for frame_num, frame in enumerate(frames, start=1):
-        logger.save_image(frame, f"dream{traj_num:02}/ego/sample{sample_num:02}_{frame_num:03}.jpg")
+        logger.save_image(frame, f"dream{traj_num:02}/ego/sample{sample_num:02}_frames/{frame_num:03}.jpg")
+
+    return Lucid.__dict__
 
 
-def main(env_type: str):
+def main(env_type: str, vid_path: str, traj_num: int):
     '''
     Runs generate 5 times and returns all prompts that were used for each sample
     '''
+    from ml_logger import logger
+
     prompt_pfx = f"walking over {env_type}, first-person view, "
     if "stair" in env_type or "pyramid" in env_type:
         prompt_pfx = prompt_pfx + "sharp stair edges, "
     prompts = [prompt_pfx + prompt_samples.prompt_gen() for i in range(5)]
 
-    prompt_dict = {f"sample{i:02}": pmt for i, pmt in enumerate(prompts, start=1)}
+    prompt_dict = {s_num: pmt for s_num, pmt in enumerate(prompts, start=1)}
+    params_dict = {}
     for s_num, pmt in prompt_dict.items():
-        generate(pmt, video_path, traj_num, s_num, env_type)
+        params = generate(pmt, vid_path, traj_num, s_num)
+        params_dict[f"sample{s_num:02}"] = params
 
-    return prompt_dict
+    logger.save_json(prompt_dict, f"dream{traj_num:02}/ego/prompts.json")
+    logger.save_json(params_dict, f"dream{traj_num:02}/ego/params.json")
 
 
 if __name__ == "__main__":
-    prompt = "Walking over stairs, first-person view, sharp stair edges, dark, cloudy, no sun, wood "  # + prompt_gen()
-    video_path = "data/channel_edges.mp4"
-    traj_num = 1
-    s_num = 1
-
-    from ml_logger import logger
-    logger.configure(prefix="lucid_sim/datasets/lucid_sim/test")
-    generate(prompt, video_path, traj_num, s_num)
+    # prompt = "Walking over stairs, first-person view, sharp stair edges, dark, cloudy, no sun, wood "  # + prompt_gen()
+    # video_path = "data/channel_edges.mp4"
+    # traj_num = 1
+    # s_num = 1
+    #
+    # from ml_logger import logger
+    #
+    # logger.configure(prefix="lucid_sim/datasets/lucid_sim/test")
+    # generate(prompt, video_path, traj_num, s_num)
+    print("run something else")

@@ -5,9 +5,8 @@ from itertools import product
 import jaynes
 import json
 from params_proto import ParamsProto
-from inference import Lucid, generate, main
-import prompt_samples
-
+import inference
+import tempfile
 
 machines = [
     # dict(ip="visiongpu50", gpu_id=0),
@@ -27,6 +26,7 @@ machines = [
     dict(ip="visiongpu54", gpu_id=5),
     dict(ip="visiongpu54", gpu_id=6),
     dict(ip="visiongpu54", gpu_id=7),
+
     dict(ip="visiongpu55", gpu_id=0),
     dict(ip="visiongpu55", gpu_id=1),
     dict(ip="visiongpu55", gpu_id=2),
@@ -50,12 +50,11 @@ class RunArgs(ParamsProto):
 
 
 def entrypoint(i,
-               prompt,
-               video_path,
-               env_name,
-               sample_root,
-               sample_vid_name):
-    print(f"Hey guys! We're on host {i} running environment {env}")
+               vid_path,
+               env_type,
+               traj_num,
+               ):
+    print(f"Hey guys! We're on host {i} running environment type {env_type}")
     from ml_logger import logger
     from ml_logger.job import RUN
 
@@ -65,32 +64,24 @@ def entrypoint(i,
     print(f" RUN prefix {prefix} ")
     logger.configure(prefix=prefix)
 
-    # TODO: MAKE START INDEX CONSISTENT WITH ALAN
-    generate(prompt, video_path, env_name, sample_root, sample_vid_name)
+    to_video = "edges_ego_0001.mp4" #todo: change this
+    # Create a temporary cache file
+    with tempfile.TemporaryDirectory() as cache_dir:
+        logger.download_file(to_video, to="temp_input.mp4")
+        inference.main(env_type=env_type, vid_path=vid_path, traj_num=traj_num)
+        print("finished inference")
 
 
 if __name__ == "__main__":
     from ml_logger import logger
     LOGGER_PREFIX = "alanyu/scratch/lucid_sim/stairs_v1"
     logger.configure(prefix=LOGGER_PREFIX)
-    # TODO: generalize for other environments
-    # environments = logger.glob("*")
+
     filtered_videos = logger.glob("edges_ego_*")
-
-    # TODO: Update to read directly from app.dash.ml
-    file_path = "data.json"
-    with open(file_path, "r") as file:
-        data_list = json.load(file)
-
-    prompt_prefix = f"walking over {terrain_type} stairs, first-person view, sharp stair edges, "
-    prompts = [prompt_prefix + prompt_samples.prompt_gen() for _ in range(len(filtered_videos))]
 
     input(
         f"Running the following {len(runs)} configurations: {runs} \n Press enter to continue..."
     )
-
-
-        for
 
     prefix = LOGGER_PREFIX  # "/alanyu/pql/investigation_raw/"
 
@@ -107,7 +98,7 @@ if __name__ == "__main__":
             # thunk = instr(entrypoint)
 
             jaynes.run(
-                entrypoint, i=i, env=env, seed=seed, prefix=prefix + postfix
+                entrypoint, i=i, env=env, seed=seed, prefix=prefix
             )
         sleep(2)
 
