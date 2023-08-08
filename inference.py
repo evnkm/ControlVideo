@@ -12,6 +12,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 import torchvision
 from controlnet_aux.processor import Processor
 
+import prompt_samples
 from models.pipeline_controlvideo import ControlVideoPipeline
 from models.util import save_videos_grid, read_video
 from models.unet import UNet3DConditionModel
@@ -37,7 +38,7 @@ class Lucid(PrefixProto):
     """
     prompt: Text description of target video
     video_path: Path to a source video
-    output_path: Directory of output
+    env_type: Directory of output
     sample_vid_name: Name of synthetic video
     condition: Condition of structure sequence
     video_length: Length of synthesized video [IN FRAMES]
@@ -51,10 +52,9 @@ class Lucid(PrefixProto):
 
     prompt: str = ""
     video_path: str = ""
-    output_path: str = ""
     sample_vid_name: str = ""
     condition: str = "lineart_coarse"
-    video_length: int = 250
+    video_length: int = 10
     smoother_steps: list = [19, 20]
     width: int = 512
     height: int = 512
@@ -64,36 +64,41 @@ class Lucid(PrefixProto):
     guidance_scale: float = 12.5
 
 
-def logger_save_vids(videos: torch.Tensor, env_name: str, sample_root: str, rescale=False, n_rows=4, fps=50):
+def logger_save_vids(videos: torch.Tensor, traj_num: int, sample_num: int, rescale=False, n_rows=4, ret_images=False, vid_type=""):
     '''
     Saves a grid of videos to a file AND returns list of numpy arrays.
     '''
+    FPS = 50
     from ml_logger import logger
-    videos = rearrange(videos, "b c t h w -> t b c h w")
-    outputs = []
-    for x in videos:
-        x = torchvision.utils.make_grid(x, nrow=n_rows)
-        x = x.transpose(0, 1).transpose(1, 2).squeeze(-1)
-        if rescale:
-            x = (x + 1.0) / 2.0  # -1,1 -> 0,1
-        x = (x * 255).numpy().astype(np.uint8)
-        outputs.append(x)
+    if vid_type == "condition":
+        logger.save_video(videos, f"dream{traj_num:02}/ego/sample{sample_num:02}_{vid_type}.mp4", fps=FPS)
 
-    logger.save_video(outputs, os.path.join(env_name, sample_root), fps=fps)
-    return outputs
+    else:
+        videos = rearrange(videos, "b c t h w -> t b c h w")
+        outputs = []
+        for x in videos:
+            x = torchvision.utils.make_grid(x, nrow=n_rows)
+            x = x.transpose(0, 1).transpose(1, 2).squeeze(-1)
+            if rescale:
+                x = (x + 1.0) / 2.0  # -1,1 -> 0,1Ï
+            x = (x * 255).numpy().astype(np.uint8)
+            outputs.append(x)
+
+        logger.save_video(outputs, f"dream{traj_num:02}/ego/sample{sample_num:02}_{vid_type}.mp4", fps=FPS)
+
+        if ret_images:
+            return outputs
 
 
-def generate(prompt, video_path, env_name, sample_root, sample_vid_name):
+def generate(prompt, video_path, traj_num, sample_num):
     from ml_logger import logger
     Lucid.prompt = prompt
     Lucid.video_path = video_path
-    Lucid.output_path = output_path
-    Lucid.sample_vid_name = sample_vid_name
 
-    os.makedirs(Lucid.output_path, exist_ok=True)
-    file_path = f"{Lucid.output_path}/info.txt"
-    with open(file_path, "w") as file:
-        file.write(json.dumps(Lucid.__dict__, indent=4))
+    # os.makedirs(Lucid.env_type, exist_ok=True)
+    # file_path = f"{Lucid.env_type}/info.txt"
+    # with open(file_path, "w") as file:
+    #     file.write(json.dumps(Lucid.__dict__, indent=4))
 
     # Height and width should be a multiple of 32
     Lucid.height = (Lucid.height // 32) * 32
@@ -129,7 +134,9 @@ def generate(prompt, video_path, env_name, sample_root, sample_vid_name):
 
     # Save source video
     original_pixels = rearrange(video, "(b f) c h w -> b c f h w", b=1)
-    save_videos_grid(original_pixels, os.path.join(Lucid.output_path, "source_video.mp4"), fps=50, rescale=True)
+    # save_videos_grid(original_pixels, os.path.join(Lucid.env_type, f"sample{sample_num}.mp4"), fps=50, rescale=True)
+    logger_save_vids(original_pixels, traj_num, sample_num, rescale=True, vid_type="source")
+
 
     # Step 2. Parse a video to conditional frames
     t2i_transform = torchvision.transforms.ToPILImage()
@@ -140,7 +147,8 @@ def generate(prompt, video_path, env_name, sample_root, sample_vid_name):
 
     # Save condition video
     video_cond = [np.array(p).astype(np.uint8) for p in pil_annotation]
-    imageio.mimsave(os.path.join(Lucid.output_path, f"{Lucid.condition}_condition.mp4"), video_cond, fps=50)
+    # imageio.mimsave(os.path.join(Lucid.env_type, f"{Lucid.condition}_condition.mp4"), video_cond, fps=50)
+    logger_save_vids(video_cond, traj_num, sample_num, rescale=True, vid_type="condition")
 
     # Reduce memory (optional)
     del processor;
@@ -166,17 +174,34 @@ def generate(prompt, video_path, env_name, sample_root, sample_vid_name):
                       ).videos
 
     # Save synthetic video
-    frames = logger_save_vids(sample, env_name, sample_root, fps=50, ret_images=True)
+    frames = logger_save_vids(sample, traj_num, sample_num, ret_images=True, vid_type="result")
 
     for frame_num, frame in enumerate(frames, start=1):
-        filename = f"{sample_vid_name}_{frame_num:03}.png"
-        logger.save_image(frame, f"{sample_vid_name}_{frame_num:03}.png")
+        logger.save_image(frame, f"dream{traj_num:02}/ego/sample{sample_num:02}_{frame_num:03}.jpg")
+
+
+def main(env_type: str):
+    '''
+    Runs generate 5 times and returns all prompts that were used for each sample
+    '''
+    prompt_pfx = f"walking over {env_type}, first-person view, "
+    if "stair" in env_type or "pyramid" in env_type:
+        prompt_pfx = prompt_pfx + "sharp stair edges, "
+    prompts = [prompt_pfx + prompt_samples.prompt_gen() for i in range(5)]
+
+    prompt_dict = {f"sample{i:02}": pmt for i, pmt in enumerate(prompts, start=1)}
+    for s_num, pmt in prompt_dict.items():
+        generate(pmt, video_path, traj_num, s_num, env_type)
+
+    return prompt_dict
 
 
 if __name__ == "__main__":
     prompt = "Walking over stairs, first-person view, sharp stair edges, dark, cloudy, no sun, wood "  # + prompt_gen()
     video_path = "data/channel_edges.mp4"
-    output_path = "Lucid_sim/test8"
-    sample_vid_name = "result"
+    traj_num = 1
+    s_num = 1
 
-    generate(prompt, video_path, output_path, sample_vid_name)
+    from ml_logger import logger
+    logger.configure(prefix="lucid_sim/datasets/lucid_sim/test")
+    generate(prompt, video_path, traj_num, s_num)

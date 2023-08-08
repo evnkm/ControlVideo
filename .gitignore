@@ -1,3 +1,6 @@
 /.env
 /.jaynes.yml
 /.secret.yml
+/Lucid_sim
+/data
+/outputs
