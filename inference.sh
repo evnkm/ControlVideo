@@ -1,4 +1,4 @@
-python inference.py \
+python inference_standalone.py \
     --prompt "Walking over stairs, first-person view, no background, no tree, blue sky and sun." \
     --condition "canny" \
     --video_path "data/channel_rgb.mp4" \

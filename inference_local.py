@@ -1,4 +1,8 @@
+import json
+import os
 import numpy as np
+import argparse
+import imageio
 import torch
 
 from einops import rearrange
@@ -10,22 +14,20 @@ from controlnet_aux.processor import Processor
 
 import prompt_samples
 from models.pipeline_controlvideo import ControlVideoPipeline
-from models.util import read_video
+from models.util import save_videos_grid, read_video
 from models.unet import UNet3DConditionModel
 from models.controlnet import ControlNetModel3D
 from models.RIFE.IFNet_HDv3 import IFNet
-from params_proto import PrefixProto
+from params_proto import PrefixProto, Flag
 
 device = "cuda"
 sd_path = "../models/stable-diffusion-v1-5"
 inter_path = "checkpoints/flownet.pkl"
 controlnet_dict = {
     "openpose": "../models/sd-controlnet-openpose",
-    "lineart_coarse": "../models/control_v11p_sd15_lineart",
-    "softedge_hed": "../models/sd-controlnet-hed",
-    "canny": "../models/sd-controlnet-canny",
     "depth_midas": "../models/sd-controlnet-depth",
-
+    "canny": "../models/sd-controlnet-canny",
+    "lineart_coarse": "../models/control_v11p_sd15_lineart",
 }
 
 POS_PROMPT = "best quality, extremely detailed, HD, realistic, 8K, masterpiece, trending on artstation, art, smooth"
@@ -51,23 +53,25 @@ class Lucid(PrefixProto):
     prompt: str = ""
     video_path: str = ""
     condition: str = "lineart_coarse"
-    video_length: int = 240
-    fps: int = 30
+    video_length: int = 250
     smoother_steps: list = [19, 20]
     width: int = 512
     height: int = 512
+    frame_rate: int = None
     is_long_video: bool = True
     seed: int = 101
     guidance_scale: float = 12.5
 
 
-def logger_save_vids(videos: torch.Tensor, traj_num: int, sample_num: int, rescale=False, n_rows=4, vid_type=""):
+def logger_save_vids(videos: torch.Tensor, traj_num: int, sample_num: int, rescale=False, n_rows=4, ret_images=False,
+                     vid_type=""):
     '''
     Saves a grid of videos to a file AND returns list of numpy arrays.
     '''
+    FPS = 50
     from ml_logger import logger
     if vid_type == "condition":
-        logger.save_video(videos, f"dream{traj_num:02}/ego/sample_{vid_type}.mp4", fps=Lucid.fps)
+        logger.save_video(videos, f"dream{traj_num:02}/ego/sample{sample_num:02}_{vid_type}.mp4", fps=FPS)
 
     else:
         videos = rearrange(videos, "b c t h w -> t b c h w")
@@ -80,25 +84,28 @@ def logger_save_vids(videos: torch.Tensor, traj_num: int, sample_num: int, resca
             x = (x * 255).numpy().astype(np.uint8)
             outputs.append(x)
 
-        if vid_type == "source":
-            logger.save_video(outputs, f"dream{traj_num:02}/ego/sample_{vid_type}.mp4", fps=Lucid.fps)
-            return
+        logger.save_video(outputs, f"dream{traj_num:02}/ego/sample{sample_num:02}_{vid_type}.mp4", fps=FPS)
 
-        elif vid_type == "result":
-            logger.save_video(outputs, f"dream{traj_num:02}/ego/sample{sample_num:02}_{vid_type}.mp4", fps=Lucid.fps)
+        if ret_images:
             return outputs
 
 
-def generate(prompt, video_path, traj_num, sample_num, source_and_cond):
+def generate(prompt, video_path, traj_num, sample_num):
     from ml_logger import logger
     Lucid.prompt = prompt
     Lucid.video_path = video_path
+
+    # os.makedirs(Lucid.env_type, exist_ok=True)
+    # file_path = f"{Lucid.env_type}/info.txt"
+    # with open(file_path, "w") as file:
+    #     file.write(json.dumps(Lucid.__dict__, indent=4))
 
     # Height and width should be a multiple of 32
     Lucid.height = (Lucid.height // 32) * 32
     Lucid.width = (Lucid.width // 32) * 32
 
-    # Step 0. Load models
+    processor = Processor(Lucid.condition)
+
     tokenizer = CLIPTokenizer.from_pretrained(sd_path, subfolder="tokenizer")
     text_encoder = CLIPTextModel.from_pretrained(sd_path, subfolder="text_encoder").to(dtype=torch.float16)
     vae = AutoencoderKL.from_pretrained(sd_path, subfolder="vae").to(dtype=torch.float16)
@@ -118,39 +125,36 @@ def generate(prompt, video_path, traj_num, sample_num, source_and_cond):
     generator = torch.Generator(device="cuda")
     generator.manual_seed(Lucid.seed)
 
-    # Prevent duplicate generation
-    if source_and_cond["generated"] is False:
-        # Step 1. Read a video
-        video = read_video(video_path=Lucid.video_path,
-                           video_length=Lucid.video_length,
-                           width=Lucid.width,
-                           height=Lucid.height, )
+    # Step 1. Read a video
+    video = read_video(video_path=Lucid.video_path,
+                       video_length=Lucid.video_length,
+                       width=Lucid.width,
+                       height=Lucid.height,
+                       frame_rate=Lucid.frame_rate)
 
-        # Save source video
-        original_pixels = rearrange(video, "(b f) c h w -> b c f h w", b=1)
-        logger_save_vids(original_pixels, traj_num, sample_num, rescale=True, vid_type="source")
+    # Save source video
+    original_pixels = rearrange(video, "(b f) c h w -> b c f h w", b=1)
+    # save_videos_grid(original_pixels, os.path.join(Lucid.env_type, f"sample{sample_num}.mp4"), fps=50, rescale=True)
+    logger_save_vids(original_pixels, traj_num, sample_num, rescale=True, vid_type="source")
 
-        # Step 2. Parse a video to conditional frames
-        processor = Processor(Lucid.condition)
-        t2i_transform = torchvision.transforms.ToPILImage()
-        pil_annotation = []
-        for frame in video:
-            pil_frame = t2i_transform(frame)
-            pil_annotation.append(processor(pil_frame, to_pil=True))
+    # Step 2. Parse a video to conditional frames
+    t2i_transform = torchvision.transforms.ToPILImage()
+    pil_annotation = []
+    for frame in video:
+        pil_frame = t2i_transform(frame)
+        pil_annotation.append(processor(pil_frame, to_pil=True))
 
-        # Save condition video
-        video_cond = [np.array(p).astype(np.uint8) for p in pil_annotation]
-        logger_save_vids(video_cond, traj_num, sample_num, rescale=True, vid_type="condition")
+    # Save condition video
+    video_cond = [np.array(p).astype(np.uint8) for p in pil_annotation]
+    # imageio.mimsave(os.path.join(Lucid.env_type, f"{Lucid.condition}_condition.mp4"), video_cond, fps=50)
+    logger_save_vids(video_cond, traj_num, sample_num, rescale=True, vid_type="condition")
 
-        del processor;
-        torch.cuda.empty_cache()
-        source_and_cond["generated"] = True
-        source_and_cond["condition_frames"] = pil_annotation
-
-    elif source_and_cond["generated"] is True:
-        pil_annotation = source_and_cond["condition_frames"]
+    # Reduce memory (optional)
+    del processor;
+    torch.cuda.empty_cache()
 
     # Step 3. inference
+
     if Lucid.is_long_video:
         window_size = int(np.sqrt(Lucid.video_length))
         sample = pipe.generate_long_video(Lucid.prompt + POS_PROMPT, video_length=Lucid.video_length,
@@ -169,7 +173,7 @@ def generate(prompt, video_path, traj_num, sample_num, source_and_cond):
                       ).videos
 
     # Save synthetic video
-    frames = logger_save_vids(sample, traj_num, sample_num, vid_type="result")
+    frames = logger_save_vids(sample, traj_num, sample_num, ret_images=True, vid_type="result")
 
     for frame_num, frame in enumerate(frames, start=1):
         logger.save_image(frame, f"dream{traj_num:02}/ego/sample{sample_num:02}_frames/{frame_num:03}.jpg")
@@ -179,13 +183,11 @@ def generate(prompt, video_path, traj_num, sample_num, source_and_cond):
 
 def main(traj_num: int, env_type: str, vid_path: str):
     '''
-    Runs generate function 5 times and uploads all prompts and params used for each sample
-    Used in run_controlnet.py for running on the cluster
+    Runs generate 5 times and returns all prompts that were used for each sample
     '''
     from ml_logger import logger
 
     prompt_pfx = f"walking over {env_type}, first-person view, "
-
     if "stair" in env_type or "pyramid" in env_type:
         prompt_pfx = prompt_pfx + "sharp stair edges, "
     prompts = [prompt_pfx + prompt_samples.prompt_gen() for i in range(5)]
@@ -194,13 +196,15 @@ def main(traj_num: int, env_type: str, vid_path: str):
     logger.save_json(prompt_dict, f"dream{traj_num:02}/ego/prompts.json")
 
     params_dict = {}
-    source_and_cond = {"generated": False}
     for s_num, pmt in enumerate(prompts, start=1):
-        params = generate(pmt, vid_path, traj_num, s_num, source_and_cond)
+        params = generate(pmt, vid_path, traj_num, s_num)
         params_dict[f"sample{s_num:02}"] = params
 
     logger.save_json(params_dict, f"dream{traj_num:02}/ego/params.json")
 
 
 if __name__ == "__main__":
-    print("inference.py is to only be used in run_control_vid.py")
+    # prompt = "Walking over stairs, first-person view, sharp stair edges, dark, cloudy, no sun, wood "  # + prompt_gen()
+    video_path = "data/EI_Stairs_2_with_background.mp4"
+
+    generate(prompt, video_path, traj_num, s_num)
