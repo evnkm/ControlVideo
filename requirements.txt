@@ -37,8 +37,8 @@ wandb==0.13.10
 xformers==0.0.16
 modelcards
 triton==2.0.0.post1
-positional_encodings
-mediapipe
+positional_encodings==6.0.1
+mediapipe==0.10.0
+termcolor==2.2.0
 params_proto
-termcolor
 ml_logger
