@@ -10,11 +10,14 @@ from controlnet_aux.processor import Processor
 
 import prompt_samples
 from models.pipeline_controlvideo import ControlVideoPipeline
-from models.util import read_video
 from models.unet import UNet3DConditionModel
 from models.controlnet import ControlNetModel3D
 from models.RIFE.IFNet_HDv3 import IFNet
 from params_proto import PrefixProto
+
+import decord
+
+decord.bridge.set_bridge('torch')
 
 device = "cuda"
 sd_path = "../models/stable-diffusion-v1-5"
@@ -50,7 +53,7 @@ class Lucid(PrefixProto):
 
     prompt: str = ""
     video_path: str = ""
-    condition: str = "lineart_coarse"
+    condition: str = "canny"
     video_length: int = 240
     fps: int = 30
     smoother_steps: list = [19, 20]
@@ -61,32 +64,50 @@ class Lucid(PrefixProto):
     guidance_scale: float = 12.5
 
 
-def logger_save_vids(videos: torch.Tensor, traj_num: int, sample_num: int, rescale=False, n_rows=4, vid_type=""):
+def logger_save_vids(videos: torch.Tensor, traj_num: int, sample_num: int, n_rows=4, vid_type=""):
     '''
     Saves a grid of videos to a file AND returns list of numpy arrays.
     '''
     from ml_logger import logger
-    if vid_type == "condition":
-        logger.save_video(videos, f"dream{traj_num:02}/ego/sample_{vid_type}.mp4", fps=Lucid.fps)
-
-    else:
+    if vid_type == "source":
         videos = rearrange(videos, "b c t h w -> t b c h w")
         outputs = []
         for x in videos:
             x = torchvision.utils.make_grid(x, nrow=n_rows)
             x = x.transpose(0, 1).transpose(1, 2).squeeze(-1)
-            if rescale:
-                x = (x + 1.0) / 2.0  # -1,1 -> 0,1Ï
+            x = x.numpy().astype(np.uint8)
+            outputs.append(x)
+
+        logger.save_video(outputs, f"dream{traj_num:02}/ego/sample_{vid_type}.mp4", fps=Lucid.fps)
+        return
+
+    elif vid_type == "condition":
+        logger.save_video(videos, f"dream{traj_num:02}/ego/sample_{vid_type}.mp4", fps=Lucid.fps)
+        return
+
+    elif vid_type == "result":
+        videos = rearrange(videos, "b c t h w -> t b c h w")
+        outputs = []
+        for x in videos:
+            x = torchvision.utils.make_grid(x, nrow=n_rows)
+            x = x.transpose(0, 1).transpose(1, 2).squeeze(-1)
             x = (x * 255).numpy().astype(np.uint8)
             outputs.append(x)
 
-        if vid_type == "source":
-            logger.save_video(outputs, f"dream{traj_num:02}/ego/sample_{vid_type}.mp4", fps=Lucid.fps)
-            return
+        logger.save_video(outputs, f"dream{traj_num:02}/ego/sample{sample_num:02}_{vid_type}.mp4", fps=Lucid.fps)
+        return outputs
 
-        elif vid_type == "result":
-            logger.save_video(outputs, f"dream{traj_num:02}/ego/sample{sample_num:02}_{vid_type}.mp4", fps=Lucid.fps)
-            return outputs
+
+def read_video(video_path, video_length, width=512, height=512):
+    vr = decord.VideoReader(video_path, width=width, height=height)  # in BGR format
+
+    frame_rate = max(1, len(vr) // video_length)
+    sample_index = list(range(0, len(vr), frame_rate))[:video_length]
+    video = vr.get_batch(sample_index)
+    video = rearrange(video, "f h w c -> f c h w")
+    video[:, [0, 2], :, :] = video[:, [2, 0], :, :]
+
+    return video
 
 
 def generate(prompt, video_path, traj_num, sample_num, source_and_cond):
@@ -128,7 +149,7 @@ def generate(prompt, video_path, traj_num, sample_num, source_and_cond):
 
         # Save source video
         original_pixels = rearrange(video, "(b f) c h w -> b c f h w", b=1)
-        logger_save_vids(original_pixels, traj_num, sample_num, rescale=True, vid_type="source")
+        logger_save_vids(original_pixels, traj_num, sample_num, vid_type="source")
 
         # Step 2. Parse a video to conditional frames
         processor = Processor(Lucid.condition)
@@ -140,7 +161,7 @@ def generate(prompt, video_path, traj_num, sample_num, source_and_cond):
 
         # Save condition video
         video_cond = [np.array(p).astype(np.uint8) for p in pil_annotation]
-        logger_save_vids(video_cond, traj_num, sample_num, rescale=True, vid_type="condition")
+        logger_save_vids(video_cond, traj_num, sample_num, vid_type="condition")
 
         del processor;
         torch.cuda.empty_cache()
@@ -178,10 +199,11 @@ def generate(prompt, video_path, traj_num, sample_num, source_and_cond):
 
 
 def main(traj_num: int, env_type: str, vid_path: str):
-    '''
+    """
     Runs generate function 5 times and uploads all prompts and params used for each sample
     Used in run_controlnet.py for running on the cluster
-    '''
+    """
+
     from ml_logger import logger
 
     prompt_pfx = f"walking over {env_type}, first-person view, "
@@ -196,6 +218,7 @@ def main(traj_num: int, env_type: str, vid_path: str):
     params_dict = {}
     source_and_cond = {"generated": False}
     for s_num, pmt in enumerate(prompts, start=1):
+        print("Generating sample", s_num)
         params = generate(pmt, vid_path, traj_num, s_num, source_and_cond)
         params_dict[f"sample{s_num:02}"] = params
 
