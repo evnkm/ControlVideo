@@ -11,8 +11,8 @@ def one_trajectory():
     # Create a temporary cache file
     with tempfile.TemporaryDirectory() as cache_dir:
         logger.download_file(to_video, to="temp_input.mp4")
-        inference.main(traj_num=4, env_type=env_type, vid_path="temp_input.mp4")
-        print("finished inference")
+        inference.main(traj_num=6, env_type=env_type, vid_path="temp_input.mp4")
+        print("finished inference, fixing color channel")
 
 
 one_trajectory()
