@@ -206,11 +206,7 @@ def main(traj_num: int, env_type: str, vid_path: str):
 
     from ml_logger import logger
 
-    prompt_pfx = f"walking over {env_type}, first-person view, "
-
-    if "stair" in env_type or "pyramid" in env_type:
-        prompt_pfx = prompt_pfx + "sharp stair edges, "
-    prompts = [prompt_pfx + prompt_samples.prompt_gen() for i in range(5)]
+    prompts = [prompt_samples.prompt_gen(env_type) for i in range(5)]
 
     prompt_dict = {f"sample{i:02}": pmt for i, pmt in enumerate(prompts, start=1)}
     logger.save_json(prompt_dict, f"dream{traj_num:02}/ego/prompts.json")
