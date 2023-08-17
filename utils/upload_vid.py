@@ -3,7 +3,7 @@ import cv2
 logger.configure("/evan_kim/scratch/lucid_sim/openpose")
 
 # use cv2 to read a video and load the stack of frames
-cap = cv2.VideoCapture("data/walk1.mp4")
+cap = cv2.VideoCapture("../data/walk1.mp4")
 frames = []
 while cap.isOpened():
     ret, frame = cap.read()

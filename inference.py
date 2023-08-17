@@ -8,7 +8,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 import torchvision
 from controlnet_aux.processor import Processor
 
-import prompt_samples
+import utils.prompt_samples as prompt_samples
 from models.pipeline_controlvideo import ControlVideoPipeline
 from models.unet import UNet3DConditionModel
 from models.controlnet import ControlNetModel3D
