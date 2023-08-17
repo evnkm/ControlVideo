@@ -20,14 +20,15 @@ import decord
 decord.bridge.set_bridge('torch')
 
 device = "cuda"
-sd_path = "../models/stable-diffusion-v1-5"
+sd_path = "../pretrained_models/stable-diffusion-v1-5"
 inter_path = "checkpoints/flownet.pkl"
 controlnet_dict = {
-    "openpose": "../models/sd-controlnet-openpose",
-    "lineart_coarse": "../models/control_v11p_sd15_lineart",
-    "softedge_hed": "../models/sd-controlnet-hed",
-    "canny": "../models/sd-controlnet-canny",
-    "depth_midas": "../models/sd-controlnet-depth",
+    "openpose": "../pretrained_models/sd-controlnet-openpose",
+    "lineart_coarse": "../pretrained_models/control_v11p_sd15_lineart",
+    "softedge_hed": "../pretrained_models/sd-controlnet-hed",
+    "canny": "../pretrained_models/sd-controlnet-canny",
+    "depth_midas": "../pretrained_models/sd-controlnet-depth",
+    "openpose": "../pretrained_models/control_v11p_sd15_openpose",
 
 }
 
@@ -53,8 +54,8 @@ class Lucid(PrefixProto):
 
     prompt: str = ""
     video_path: str = ""
-    condition: str = "canny"
-    video_length: int = 240
+    condition: str = "openpose"
+    video_length: int = 96
     fps: int = 30
     smoother_steps: list = [19, 20]
     width: int = 512
@@ -196,6 +197,17 @@ def generate(prompt, video_path, traj_num, sample_num, source_and_cond):
         logger.save_image(frame, f"dream{traj_num:02}/ego/sample{sample_num:02}_frames/{frame_num:03}.jpg")
 
     return Lucid.__dict__
+
+
+def simple(prompt: str, traj_num: int, s_num: int, vid_path: str):
+    from ml_logger import logger
+
+    source_and_cond = {"generated": False}
+    for _ in range(traj_num):
+        print("Generating sample", s_num)
+        params = generate(prompt, vid_path, traj_num, s_num, source_and_cond)
+
+    logger.save_json(params, f"dream{traj_num:02}/ego/params.json")
 
 
 def main(traj_num: int, env_type: str, vid_path: str):
