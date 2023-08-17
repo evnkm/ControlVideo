@@ -48,12 +48,14 @@ Note: `xformers` is recommended to save memory and running time. `controlnet-aux
 ## Inference
 
 ### 0. Reminders
-In order to use one_trajectory.py or run_control.net
+In order to use one_trajectory.py or run_control.net, you need to first set the `logger.prefix` to the path of the input video.
 
 ### 1. one_trajectory.py
 Used to generate a video from a single trajectory input video. The input video should first be on the server where `logger.prefix` is set to.
 
-### 2. 
+### 2. inference.py
+inference.simple for just taking an input video and generating one video. inference.main for taking an input video and generating 5 samples for the trajectory input video.
+
 
 ## Acknowledgement
 This work repository borrows heavily from [Diffusers](https://github.com/huggingface/diffusers), [ControlNet](https://github.com/lllyasviel/ControlNet), [Tune-A-Video](https://github.com/showlab/Tune-A-Video), and [RIFE](https://github.com/megvii-research/ECCV2022-RIFE).
