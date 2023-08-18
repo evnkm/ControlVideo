@@ -15,6 +15,7 @@ from models.controlnet import ControlNetModel3D
 from models.RIFE.IFNet_HDv3 import IFNet
 from params_proto import PrefixProto
 
+import cv2
 import decord
 
 decord.bridge.set_bridge('torch')
@@ -54,7 +55,7 @@ class Lucid(PrefixProto):
 
     prompt: str = ""
     video_path: str = ""
-    condition: str = "openpose"
+    condition: str = "depth_midas"
     video_length: int = 96
     fps: int = 30
     smoother_steps: list = [19, 20]
@@ -79,6 +80,7 @@ def logger_save_vids(videos: torch.Tensor, traj_num: int, sample_num: int, n_row
             x = x.numpy().astype(np.uint8)
             outputs.append(x)
 
+
         logger.save_video(outputs, f"dream{traj_num:02}/ego/sample_{vid_type}.mp4", fps=Lucid.fps)
         return
 
@@ -99,14 +101,15 @@ def logger_save_vids(videos: torch.Tensor, traj_num: int, sample_num: int, n_row
         return outputs
 
 
-def read_video(video_path, video_length, width=512, height=512):
-    vr = decord.VideoReader(video_path, width=width, height=height)  # in BGR format
+def read_video(video_path, video_length):
+    ret, frame = cv2.VideoCapture(video_path).read()
+    Lucid.height, Lucid.width = frame.shape[:2]
 
+    vr = decord.VideoReader(video_path, width=Lucid.width, height=Lucid.height)
     frame_rate = max(1, len(vr) // video_length)
     sample_index = list(range(0, len(vr), frame_rate))[:video_length]
     video = vr.get_batch(sample_index)
     video = rearrange(video, "f h w c -> f c h w")
-    video[:, [0, 2], :, :] = video[:, [2, 0], :, :]
 
     return video
 
@@ -144,9 +147,7 @@ def generate(prompt, video_path, traj_num, sample_num, source_and_cond):
     if source_and_cond["generated"] is False:
         # Step 1. Read a video
         video = read_video(video_path=Lucid.video_path,
-                           video_length=Lucid.video_length,
-                           width=Lucid.width,
-                           height=Lucid.height, )
+                           video_length=Lucid.video_length,)
 
         # Save source video
         original_pixels = rearrange(video, "(b f) c h w -> b c f h w", b=1)
@@ -203,7 +204,7 @@ def simple(prompt: str, traj_num: int, s_num: int, vid_path: str):
     from ml_logger import logger
 
     source_and_cond = {"generated": False}
-    for _ in range(traj_num):
+    for _ in range(s_num):
         print("Generating sample", s_num)
         params = generate(prompt, vid_path, traj_num, s_num, source_and_cond)
 
@@ -234,4 +235,23 @@ def main(traj_num: int, env_type: str, vid_path: str):
 
 
 if __name__ == "__main__":
-    print("inference.py is to only be used in run_control_vid.py")
+    # Generation for one trajectory
+    import tempfile
+    from ml_logger import logger
+
+    logger.configure(prefix="/evan_kim/scratch/lucid_sim/openpose")
+    to_video = "shuffle.mp4"
+    # env_type = "stairs"
+
+    Lucid.condition = "openpose"
+    Lucid.is_long_video = True
+    Lucid.video_length = 20
+    Lucid.fps = 10
+
+    with tempfile.TemporaryDirectory() as cache_dir:
+        logger.download_file(to_video, to="temp_input.mp4")
+        simple(
+            "4 people shuffling in a circle, bright lighting, 4k, keep people consistent",
+            3, 1, "temp_input.mp4")
+
+    print("finished inference")
