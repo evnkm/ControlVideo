@@ -3,13 +3,6 @@
   <component name="PublishConfigData" autoUpload="Always" serverName="evan@luma02:22 password (2)" remoteFilesAllowedToDisappearOnAutoupload="false" confirmBeforeUploading="false">
     <option name="confirmBeforeUploading" value="false" />
     <serverData>
-      <paths name="CNet evan@luma02:22 password">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
       <paths name="ControlVideo evan@luma02:22">
         <serverdata>
           <mappings>
@@ -17,45 +10,10 @@
           </mappings>
         </serverdata>
       </paths>
-      <paths name="alanyu@frigg.csail.mit.edu:22 password">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="alanyu@frigg:22 password">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="evan@luma02:22 password">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
       <paths name="evan@luma02:22 password (2)">
         <serverdata>
           <mappings>
-            <mapping deploy="/home/evan/controlvideo" local="$PROJECT_DIR$" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="evan_kim@visiongpu54.csail.mit.edu:22 password">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
-          </mappings>
-        </serverdata>
-      </paths>
-      <paths name="exx@luma01:22 agent">
-        <serverdata>
-          <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/home/evan/ControlVideo" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>
